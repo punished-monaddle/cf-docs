@@ -2,7 +2,7 @@
 template Asset
   with
     issuer : Party   -- Will be signatory
-    owner : Party    -- Will be observer and controller
+    owner : Party    -- Observes the contract and controls ChangeOwner
     auditor : Party  -- Will be observer
   where
     signatory issuer        -- Must authorize creation; always sees contract

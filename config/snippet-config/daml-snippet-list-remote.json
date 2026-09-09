@@ -27,6 +27,20 @@
       "options": {
         "language": "haskell"
       }
+    },
+    {
+      "snippetName": "token-balance",
+      "sourceRepo": "daml",
+      "sourceFilepath": "sdk/docs/sharable/sdk/tutorials/smart-contracts/daml/daml-intro-choices/daml/TemplateChoices.daml",
+      "location": {
+        "type": "stringMarker",
+        "start": "cf-docs-snippet-token-balance-9cff4dcb-start",
+        "end": "cf-docs-snippet-token-balance-9cff4dcb-end"
+      },
+      "options": {
+        "language": "haskell",
+        "normalizeIndent": "baseline"
+      }
     }
   ]
 }

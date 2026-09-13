@@ -39,15 +39,8 @@ Use this to report a problem or request new content without editing the source y
 
 ### Prerequisites
 
-Either:
-
-- [`direnv`](https://direnv.net/)
-- [`nix`](https://nixos.org/download/)
-
-OR:
-
-- [Node.js 24](https://nodejs.org/en/download) (note that `mintlify` is not currently compatible with Node.js 26)
-- [Python 3.14](https://www.python.org/downloads/) if you are running any of the machinery for syncing snippets or updating generated docs
+Install [Nix](https://nixos.org/download/). The repository’s `nix-shell` provides
+the development tools and installs npm dependencies on first use.
 
 ### Authoring and generated content
 
@@ -69,7 +62,7 @@ regeneration.
 ### Running the dev server
 
 ```bash
-direnv allow
+nix-shell
 cd docs-main && mintlify dev
 ```
 
@@ -81,16 +74,9 @@ The site will be available at http://localhost:3000.
 mintlify broken-links
 ```
 
-## Generate external snippets
+## Snippets
 
-External snippet extraction from source repositories is documented in [config/snippet-config/update-workflows.md](config/snippet-config/update-workflows.md). Use that workflow when updating snippet configs under `config/snippet-config/` or regenerating checked-in snippets under `docs-main/snippets/external/`.
-
-Run this whenever you add, remove, or update a snippet source in `config/snippet-config/`, or when you need to pull in changes from an upstream repo (such as Canton or Splice) that are referenced by existing snippets.
-
-```bash
-npm run generate:external-snippets -- --list
-npm run generate:external-snippets -- canton --source-dir ../canton
-```
+See [Snippets](docs/snippets/README.md) for setup, authoring commands, and upstream refreshes.
 
 ## License
 

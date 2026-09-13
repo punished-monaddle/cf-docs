@@ -1,4 +1,4 @@
-"""Add external snippet manifest entries from a local source checkout."""
+"""Add, edit, or move external snippets from a local source checkout."""
 
 from __future__ import annotations
 
@@ -607,12 +607,96 @@ def add(args: argparse.Namespace, repo: SnippetRepo) -> int:
     return 0
 
 
+def update(args: argparse.Namespace, repo: SnippetRepo) -> int:
+    source_dir = source_dir_for(args, repo)
+    manifest_file = manifest_path(repo)
+    manifest = load_manifest(manifest_file)
+    lock = load_source_lock()
+    entry = find_manifest_entry(manifest, manifest_file, args.snippet_name)
+    requested_location = marker_pair(args, editing=True)
+    has_change = requested_location is not None or args.language is not None
+    if args.command == "move":
+        has_change = True
+    if not has_change:
+        raise SnippetAuthoringError("Edit requires a selector option or --language")
+
+    source = normalized_source_path(
+        args.source if args.command == "move" else str(entry.get("sourceFilepath", ""))
+    )
+    validate_source_file(source_dir, source)
+    revision = source_revision(source_dir, source)
+    location = requested_location or entry.get("location")
+    if not isinstance(location, dict) or location.get("type") not in {
+        "fullFile",
+        "stringMarker",
+        "lines",
+        "jsonIndex",
+        "regexWrap",
+    }:
+        raise SnippetAuthoringError(
+            f"Snippet has an unsupported existing selector: {location!r}"
+        )
+    options = entry.get("options")
+    if not isinstance(options, dict):
+        options = {}
+        entry["options"] = options
+    language = args.language or options.get("language") or infer_language(source)
+
+    for other in manifest["snippets"]:
+        if other is not entry and same_source(other, source, location):
+            raise SnippetAuthoringError(
+                f"Another snippet already uses this source and selector: "
+                f"{other.get('snippetName')}"
+            )
+
+    entry["sourceRepo"] = repo.name
+    entry["sourceFilepath"] = source
+    entry["location"] = location
+    options["language"] = language
+    lock["snippets"][args.snippet_name] = revision_record(repo, revision)
+    generated = render_one_snippet(
+        source_dir=source_dir,
+        manifest=manifest,
+        entry=entry,
+    )
+    generated_file = output_path(repo, args.snippet_name)
+    changes = authoring_changes(
+        manifest_file=manifest_file,
+        manifest=manifest,
+        lock=lock,
+        generated_file=generated_file,
+        generated_content=generated,
+    )
+    if args.dry_run:
+        print_change_preview(
+            action=args.command,
+            snippet_name=args.snippet_name,
+            changes=changes,
+        )
+        return 0
+    commit_changes(changes)
+
+    verb = "Moved" if args.command == "move" else "Edited"
+    print(f"{verb} {args.snippet_name}; its import path is unchanged")
+    print(f"Manifest: {manifest_file.relative_to(CF_DOCS_ROOT)}")
+    print(f"Source:   {revision.commit} at {revision.remote} ({revision.ref})")
+    print(f"Output:   {generated_file.relative_to(CF_DOCS_ROOT)}")
+    return 0
+
+
+
 def add_authoring_arguments(
     parser: argparse.ArgumentParser,
+    *,
+    command: str,
 ) -> None:
     parser.add_argument("repo", choices=sorted(REPOS), help="Source repository key")
-    parser.add_argument("--source", required=True)
-    parser.add_argument("--name", help="Override the derived snippetName")
+    if command in {"edit", "move"}:
+        parser.add_argument("snippet_name", help="Existing stable snippetName")
+    if command in {"add", "move"}:
+        parser.add_argument("--source", required=True)
+    if command == "add":
+        parser.add_argument("--name", help="Override the derived snippetName")
     parser.add_argument(
         "--source-dir",
         type=Path,
@@ -634,11 +718,21 @@ def add_authoring_arguments(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Add cf-docs external snippets")
+    parser = argparse.ArgumentParser(description="Add, edit, or move cf-docs external snippets")
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_parser = subparsers.add_parser("add", help="Add and render a snippet")
-    add_authoring_arguments(add_parser)
+    add_authoring_arguments(add_parser, command="add")
     add_parser.set_defaults(handler=add)
+    edit_parser = subparsers.add_parser(
+        "edit", help="Edit and rerender a snippet without changing its name"
+    )
+    add_authoring_arguments(edit_parser, command="edit")
+    edit_parser.set_defaults(handler=update)
+    move_parser = subparsers.add_parser(
+        "move", help="Move and rerender a snippet without changing its name"
+    )
+    add_authoring_arguments(move_parser, command="move")
+    move_parser.set_defaults(handler=update)
     return parser.parse_args(argv)
 
 

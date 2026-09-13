@@ -10,7 +10,8 @@ The automation to pull the snippet updates into this repository is implemented u
 
 Use the [add command](add-snippets.md) to create a manifest entry and its initial
 MDX output from a tracked source file. The guide covers prerequisites, selectors,
-page imports, dry runs, and source provenance.
+page imports, dry runs, and source provenance. Use [move and edit](move-snippets.md)
+to update an existing snippet while keeping its name and page imports stable.
 
 ## Local one-command extraction
 

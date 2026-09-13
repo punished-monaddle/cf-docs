@@ -39,8 +39,10 @@ Use this to report a problem or request new content without editing the source y
 
 ### Prerequisites
 
-Install [Nix](https://nixos.org/download/). The repository’s `nix-shell` provides
-the development tools and installs npm dependencies on first use.
+Install [Nix](https://nixos.org/download/) and [direnv](https://direnv.net/),
+and [enable direnv’s shell hook](https://direnv.net/docs/hook.html). Then run
+`direnv allow` from the repository root. The checked-in `.envrc` loads Nix,
+provides the development tools, and installs npm dependencies on first use.
 
 ### Authoring and generated content
 
@@ -62,7 +64,6 @@ regeneration.
 ### Running the dev server
 
 ```bash
-nix-shell
 cd docs-main && mintlify dev
 ```
 

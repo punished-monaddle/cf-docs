@@ -7,7 +7,6 @@ import pytest
 
 from scripts import manage_external_snippets as author
 from tests.snippet_authoring_helpers import (
-    authoring_fixture,  # noqa: F401 -- Pytest discovers imported fixtures.
     commit_source,
 )
 

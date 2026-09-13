@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Add external snippet manifest entries from a local source checkout."""
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ from scripts.generate_external_snippets import (
     SnippetRepo,
     find_source_dir,
 )
-
 
 CF_DOCS_ROOT = Path(__file__).resolve().parents[1]
 MAIN_VERSION = "main"
@@ -209,9 +207,7 @@ def source_revision(source_dir: Path, source: str) -> SourceRevision:
     if upstream in refs:
         remote_ref = upstream
     elif refs:
-        remote_ref = sorted(refs, key=lambda ref: (not ref.startswith("origin/"), ref))[
-            0
-        ]
+        remote_ref = min(refs, key=lambda ref: (not ref.startswith("origin/"), ref))
     else:
         raise SnippetAuthoringError(
             "Source HEAD must be available at an exact remote-tracking ref; fetch or push it first"

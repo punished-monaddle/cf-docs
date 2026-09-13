@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add and edit external snippet manifest entries from a local source checkout."""
+"""Add external snippet manifest entries from a local source checkout."""
 
 from __future__ import annotations
 
@@ -248,7 +248,15 @@ def normalized_source_path(source: str) -> str:
 
 def validate_source_file(source_dir: Path, source: str) -> Path:
     root = source_dir.resolve()
-    candidate = (root / source).resolve()
+    candidate = root
+    for part in PurePosixPath(source).parts:
+        candidate = candidate / part
+        if candidate.is_symlink():
+            raise SnippetAuthoringError(
+                f"Snippet source must not contain symlinks: {source}; "
+                "use a tracked regular file path instead"
+            )
+    candidate = candidate.resolve()
     try:
         candidate.relative_to(root)
     except ValueError as error:
@@ -603,154 +611,12 @@ def add(args: argparse.Namespace, repo: SnippetRepo) -> int:
     return 0
 
 
-def update(args: argparse.Namespace, repo: SnippetRepo) -> int:
-    source_dir = source_dir_for(args, repo)
-    manifest_file = manifest_path(repo)
-    manifest = load_manifest(manifest_file)
-    lock = load_source_lock()
-    entry = find_manifest_entry(manifest, manifest_file, args.snippet_name)
-    requested_location = marker_pair(args, editing=True)
-    has_change = requested_location is not None or args.language is not None
-    if args.command == "move":
-        has_change = True
-    if not has_change:
-        raise SnippetAuthoringError("Edit requires a selector option or --language")
-
-    source = normalized_source_path(
-        args.source if args.command == "move" else str(entry.get("sourceFilepath", ""))
-    )
-    validate_source_file(source_dir, source)
-    revision = source_revision(source_dir, source)
-    location = requested_location or entry.get("location")
-    if not isinstance(location, dict) or location.get("type") not in {
-        "fullFile",
-        "stringMarker",
-        "lines",
-        "jsonIndex",
-        "regexWrap",
-    }:
-        raise SnippetAuthoringError(
-            f"Snippet has an unsupported existing selector: {location!r}"
-        )
-    options = entry.get("options")
-    if not isinstance(options, dict):
-        options = {}
-        entry["options"] = options
-    language = args.language or options.get("language") or infer_language(source)
-
-    for other in manifest["snippets"]:
-        if other is not entry and same_source(other, source, location):
-            raise SnippetAuthoringError(
-                f"Another snippet already uses this source and selector: "
-                f"{other.get('snippetName')}"
-            )
-
-    entry["sourceRepo"] = repo.name
-    entry["sourceFilepath"] = source
-    entry["location"] = location
-    options["language"] = language
-    lock["snippets"][args.snippet_name] = revision_record(repo, revision)
-    generated = render_one_snippet(
-        source_dir=source_dir,
-        manifest=manifest,
-        entry=entry,
-    )
-    generated_file = output_path(repo, args.snippet_name)
-    changes = authoring_changes(
-        manifest_file=manifest_file,
-        manifest=manifest,
-        lock=lock,
-        generated_file=generated_file,
-        generated_content=generated,
-    )
-    if args.dry_run:
-        print_change_preview(
-            action=args.command,
-            snippet_name=args.snippet_name,
-            changes=changes,
-        )
-        return 0
-    commit_changes(changes)
-
-    verb = "Moved" if args.command == "move" else "Edited"
-    print(f"{verb} {args.snippet_name}; its import path is unchanged")
-    print(f"Manifest: {manifest_file.relative_to(CF_DOCS_ROOT)}")
-    print(f"Source:   {revision.commit} at {revision.remote} ({revision.ref})")
-    print(f"Output:   {generated_file.relative_to(CF_DOCS_ROOT)}")
-    return 0
-
-
-def find_references(generated_file: Path) -> list[str]:
-    docs_root = CF_DOCS_ROOT / "docs-main"
-    target = generated_file.relative_to(docs_root).as_posix().removesuffix(".mdx")
-    target_pattern = re.compile(rf"{re.escape(target)}(?:\.mdx)?(?=$|['\"\s;)\]}}>])")
-    references: list[str] = []
-    searchable_suffixes = {".js", ".jsx", ".json", ".md", ".mdx", ".ts", ".tsx"}
-    for path in docs_root.rglob("*"):
-        if (
-            not path.is_file()
-            or path == generated_file
-            or path.suffix.lower() not in searchable_suffixes
-        ):
-            continue
-        for line_number, line in enumerate(
-            path.read_text(encoding="utf-8").splitlines(), start=1
-        ):
-            if target_pattern.search(line):
-                references.append(
-                    f"{path.relative_to(CF_DOCS_ROOT).as_posix()}:{line_number}"
-                )
-    return references
-
-
-def delete(args: argparse.Namespace, repo: SnippetRepo) -> int:
-    manifest_file = manifest_path(repo)
-    manifest = load_manifest(manifest_file)
-    lock = load_source_lock()
-    entry = find_manifest_entry(manifest, manifest_file, args.snippet_name)
-    generated_file = output_path(repo, args.snippet_name)
-    references = find_references(generated_file)
-    if references:
-        rendered = "\n  ".join(references)
-        raise SnippetAuthoringError(
-            f"Cannot delete {args.snippet_name}; page references remain:\n  {rendered}"
-        )
-
-    manifest["snippets"].remove(entry)
-    lock["snippets"].pop(args.snippet_name, None)
-    changes = authoring_changes(
-        manifest_file=manifest_file,
-        manifest=manifest,
-        lock=lock,
-        generated_file=generated_file,
-        generated_content=None,
-    )
-    if args.dry_run:
-        print_change_preview(
-            action="delete",
-            snippet_name=args.snippet_name,
-            changes=changes,
-        )
-        return 0
-    commit_changes(changes)
-    print(f"Deleted {args.snippet_name}")
-    print(f"Manifest: {manifest_file.relative_to(CF_DOCS_ROOT)}")
-    print(f"Output:   {generated_file.relative_to(CF_DOCS_ROOT)}")
-    return 0
-
-
 def add_authoring_arguments(
     parser: argparse.ArgumentParser,
-    *,
-    command: str,
 ) -> None:
     parser.add_argument("repo", choices=sorted(REPOS), help="Source repository key")
-    if command in {"edit", "move"}:
-        parser.add_argument("snippet_name", help="Existing stable snippetName")
-    if command in {"add", "move"}:
-        parser.add_argument("--source", required=True)
-    if command == "add":
-        parser.add_argument("--name", help="Override the derived snippetName")
+    parser.add_argument("--source", required=True)
+    parser.add_argument("--name", help="Override the derived snippetName")
     parser.add_argument(
         "--source-dir",
         type=Path,
@@ -772,26 +638,11 @@ def add_authoring_arguments(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Add, edit, move, or delete cf-docs external snippets"
-    )
+    parser = argparse.ArgumentParser(description="Add cf-docs external snippets")
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_parser = subparsers.add_parser("add", help="Add and render a snippet")
-    add_authoring_arguments(add_parser, command="add")
-    edit_parser = subparsers.add_parser(
-        "edit", help="Edit and rerender a snippet without changing its name"
-    )
-    add_authoring_arguments(edit_parser, command="edit")
-    move_parser = subparsers.add_parser(
-        "move", help="Move and rerender a snippet without changing its name"
-    )
-    add_authoring_arguments(move_parser, command="move")
-    delete_parser = subparsers.add_parser(
-        "delete", help="Delete an unreferenced snippet and its generated output"
-    )
-    delete_parser.add_argument("repo", choices=sorted(REPOS))
-    delete_parser.add_argument("snippet_name", help="Existing stable snippetName")
-    delete_parser.add_argument("--dry-run", action="store_true")
+    add_authoring_arguments(add_parser)
+    add_parser.set_defaults(handler=add)
     return parser.parse_args(argv)
 
 
@@ -799,11 +650,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     repo = REPOS[args.repo]
     try:
-        if args.command == "add":
-            return add(args, repo)
-        if args.command in {"edit", "move"}:
-            return update(args, repo)
-        return delete(args, repo)
+        return args.handler(args, repo)
     except (OSError, SnippetAuthoringError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

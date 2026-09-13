@@ -37,6 +37,7 @@ pkgs.mkShell {
   shellHook = ''
     export PATH="$PWD/node_modules/.bin:$HOME/.dpm/bin:$HOME/.daml/bin:$PATH"
     export PYTHONPATH="$PWD/src''${PYTHONPATH:+:$PYTHONPATH}"
+    export NODE_EXTRA_CA_CERTS="''${NODE_EXTRA_CA_CERTS:-''${NIX_SSL_CERT_FILE:-${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt}}"
 
     case " $NODE_OPTIONS " in
       *" --max-old-space-size="*) ;;
@@ -49,13 +50,14 @@ pkgs.mkShell {
         ;;
     esac
 
-    if [ "''${SKIP_NPM_INSTALL:-}" != "1" ] && [ -f package.json ] && [ ! -d node_modules ]; then
+    if [ "''${SKIP_NPM_INSTALL:-}" != "1" ] && [ -f package.json ] && [ ! -f node_modules/.cf-docs-ready ]; then
       echo "Installing npm dependencies..."
       if [ -f package-lock.json ]; then
-        npm ci
+        npm ci || { echo "npm install failed; rerun nix-shell to retry." >&2; exit 1; }
       else
-        npm install
+        npm install || { echo "npm install failed; rerun nix-shell to retry." >&2; exit 1; }
       fi
+      touch node_modules/.cf-docs-ready
     fi
   '';
 }

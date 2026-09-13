@@ -37,7 +37,12 @@ pkgs.mkShell {
   shellHook = ''
     export PATH="$PWD/node_modules/.bin:$HOME/.dpm/bin:$HOME/.daml/bin:$PATH"
     export PYTHONPATH="$PWD/src''${PYTHONPATH:+:$PYTHONPATH}"
-    export NODE_EXTRA_CA_CERTS="''${NODE_EXTRA_CA_CERTS:-''${NIX_SSL_CERT_FILE:-${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt}}"
+    if [ -z "''${NODE_EXTRA_CA_CERTS:-}" ]; then
+      export NODE_EXTRA_CA_CERTS="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      if [ -r "''${NIX_SSL_CERT_FILE:-}" ]; then
+        export NODE_EXTRA_CA_CERTS="$NIX_SSL_CERT_FILE"
+      fi
+    fi
 
     case " $NODE_OPTIONS " in
       *" --max-old-space-size="*) ;;

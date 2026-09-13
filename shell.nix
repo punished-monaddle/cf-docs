@@ -58,9 +58,9 @@ pkgs.mkShell {
     if [ "''${SKIP_NPM_INSTALL:-}" != "1" ] && [ -f package.json ] && [ ! -f node_modules/.cf-docs-ready ]; then
       echo "Installing npm dependencies..."
       if [ -f package-lock.json ]; then
-        npm ci || { echo "npm install failed; rerun nix-shell to retry." >&2; exit 1; }
+        npm ci || { echo "npm install failed; run direnv reload (or re-enter nix-shell) to retry." >&2; exit 1; }
       else
-        npm install || { echo "npm install failed; rerun nix-shell to retry." >&2; exit 1; }
+        npm install || { echo "npm install failed; run direnv reload (or re-enter nix-shell) to retry." >&2; exit 1; }
       fi
       touch node_modules/.cf-docs-ready
     fi

@@ -2,13 +2,15 @@
 
 ## Setup
 
-Install [Nix](https://nixos.org/download/), then run from the repository root:
+Install [Nix](https://nixos.org/download/) and [direnv](https://direnv.net/),
+and [enable direnv’s shell hook](https://direnv.net/docs/hook.html). From the repository root:
 
 ```bash
-nix-shell
+direnv allow
 ```
 
-The shell provides Python, Node.js, npm, and Git. No separate tool installs are needed.
+The checked-in `.envrc` loads Nix automatically, providing Python, Node.js, npm,
+and Git. No manual `nix-shell` step is needed.
 
 ## Commands
 

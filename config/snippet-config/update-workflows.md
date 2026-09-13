@@ -12,6 +12,7 @@ Use the [add command](add-snippets.md) to create a manifest entry and its initia
 MDX output from a tracked source file. The guide covers prerequisites, selectors,
 page imports, dry runs, and source provenance. Use [move and edit](move-snippets.md)
 to update an existing snippet while keeping its name and page imports stable.
+Use [delete](delete-snippets.md) to remove an unreferenced snippet and its records.
 
 ## Local one-command extraction
 

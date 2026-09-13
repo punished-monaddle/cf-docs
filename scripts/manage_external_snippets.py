@@ -1,4 +1,4 @@
-"""Add, edit, or move external snippets from a local source checkout."""
+"""Add, edit, move, or delete external snippets with stable page imports."""
 
 from __future__ import annotations
 
@@ -684,6 +684,83 @@ def update(args: argparse.Namespace, repo: SnippetRepo) -> int:
     return 0
 
 
+def find_references(generated_file: Path) -> list[str]:
+    docs_root = CF_DOCS_ROOT / "docs-main"
+    target = generated_file.relative_to(docs_root).as_posix().removesuffix(".mdx")
+    target_pattern = re.compile(rf"{re.escape(target)}(?:\.mdx)?(?=$|['\"\s;)\]}}>])")
+    # Resolve quoted paths relative to each consumer, including wrapper snippets.
+    # A conservative string scan also catches multiline imports, re-exports, and
+    # literal dynamic imports without requiring a JavaScript/MDX parser.
+    path_pattern = re.compile(r"(['\"`])((?:/|\.{1,2}/)[^'\"`\r\n]+)\1")
+    resolved_target = generated_file.resolve()
+    references: list[str] = []
+    searchable_suffixes = {".js", ".jsx", ".json", ".md", ".mdx", ".ts", ".tsx"}
+    for path in docs_root.rglob("*"):
+        if (
+            not path.is_file()
+            or path == generated_file
+            or path.suffix.lower() not in searchable_suffixes
+        ):
+            continue
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            referenced = bool(target_pattern.search(line))
+            for match in path_pattern.finditer(line):
+                specifier = match.group(2).split("?", 1)[0].split("#", 1)[0]
+                candidate = (
+                    docs_root / specifier.lstrip("/")
+                    if specifier.startswith("/")
+                    else path.parent / specifier
+                )
+                if (
+                    candidate.resolve() == resolved_target
+                    or Path(f"{candidate}.mdx").resolve() == resolved_target
+                ):
+                    referenced = True
+                    break
+            if referenced:
+                references.append(
+                    f"{path.relative_to(CF_DOCS_ROOT).as_posix()}:{line_number}"
+                )
+    return references
+
+
+def delete(args: argparse.Namespace, repo: SnippetRepo) -> int:
+    manifest_file = manifest_path(repo)
+    manifest = load_manifest(manifest_file)
+    lock = load_source_lock()
+    entry = find_manifest_entry(manifest, manifest_file, args.snippet_name)
+    generated_file = output_path(repo, args.snippet_name)
+    references = find_references(generated_file)
+    if references:
+        rendered = "\n  ".join(references)
+        raise SnippetAuthoringError(
+            f"Cannot delete {args.snippet_name}; page references remain:\n  {rendered}"
+        )
+
+    manifest["snippets"].remove(entry)
+    lock["snippets"].pop(args.snippet_name, None)
+    changes = authoring_changes(
+        manifest_file=manifest_file,
+        manifest=manifest,
+        lock=lock,
+        generated_file=generated_file,
+        generated_content=None,
+    )
+    if args.dry_run:
+        print_change_preview(
+            action="delete",
+            snippet_name=args.snippet_name,
+            changes=changes,
+        )
+        return 0
+    commit_changes(changes)
+    print(f"Deleted {args.snippet_name}")
+    print(f"Manifest: {manifest_file.relative_to(CF_DOCS_ROOT)}")
+    print(f"Output:   {generated_file.relative_to(CF_DOCS_ROOT)}")
+    return 0
+
 
 def add_authoring_arguments(
     parser: argparse.ArgumentParser,
@@ -718,7 +795,9 @@ def add_authoring_arguments(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Add, edit, or move cf-docs external snippets")
+    parser = argparse.ArgumentParser(
+        description="Add, edit, move, or delete cf-docs external snippets"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_parser = subparsers.add_parser("add", help="Add and render a snippet")
     add_authoring_arguments(add_parser, command="add")
@@ -733,6 +812,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     add_authoring_arguments(move_parser, command="move")
     move_parser.set_defaults(handler=update)
+    delete_parser = subparsers.add_parser(
+        "delete", help="Delete an unreferenced snippet and its generated output"
+    )
+    delete_parser.add_argument("repo", choices=sorted(REPOS))
+    delete_parser.add_argument("snippet_name", help="Existing stable snippetName")
+    delete_parser.add_argument("--dry-run", action="store_true")
+    delete_parser.set_defaults(handler=delete)
     return parser.parse_args(argv)
 
 

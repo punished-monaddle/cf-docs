@@ -83,4 +83,3 @@ def authoring_fixture(
     )
     monkeypatch.setattr(author, "CF_DOCS_ROOT", root)
     return root, manifest, source_dir
-

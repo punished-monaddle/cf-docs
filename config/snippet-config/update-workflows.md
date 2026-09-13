@@ -8,10 +8,7 @@ The automation to pull the snippet updates into this repository is implemented u
 
 ## Author external snippets
 
-Use the [add command](add-snippets.md) to create a manifest entry and its initial
-MDX output from a tracked source file. The guide covers prerequisites, selectors,
-page imports, dry runs, and source provenance. Use [move and edit](move-snippets.md)
-to update an existing snippet while keeping its name and page imports stable.
+See [Snippets](../../docs/snippets/README.md) for setup and commands.
 
 ## Local one-command extraction
 
